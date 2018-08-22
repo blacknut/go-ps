@@ -3,13 +3,22 @@
 package ps
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"runtime"
 	"strings"
 )
 
 // Refresh reloads all the data associated with this process.
 func (p *UnixProcess) Refresh() error {
+	if runtime.GOOS == "android" {
+		cmdLinePath := fmt.Sprintf("/proc/%d/cmdline", p.pid)
+		if cmdlineBytes, err := ioutil.ReadFile(cmdLinePath); err == nil {
+			p.binary = strings.TrimSpace(string(bytes.Replace(cmdlineBytes, []byte{0}, []byte{' '}, -1)))
+		}
+	}
+
 	statPath := fmt.Sprintf("/proc/%d/stat", p.pid)
 	dataBytes, err := ioutil.ReadFile(statPath)
 	if err != nil {
@@ -20,7 +29,10 @@ func (p *UnixProcess) Refresh() error {
 	data := string(dataBytes)
 	binStart := strings.IndexRune(data, '(') + 1
 	binEnd := strings.IndexRune(data[binStart:], ')')
-	p.binary = data[binStart : binStart+binEnd]
+
+	if p.binary == "" {
+		p.binary = data[binStart : binStart+binEnd]
+	}
 
 	// Move past the image name and start parsing the rest
 	data = data[binStart+binEnd+2:]
